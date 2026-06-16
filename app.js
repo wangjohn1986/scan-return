@@ -97,9 +97,9 @@ function fileToCanvas(file, maxDim) {
       const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
       const cv = document.createElement('canvas'); cv.width = Math.round(img.width * scale); cv.height = Math.round(img.height * scale);
       const x = cv.getContext('2d'); x.drawImage(img, 0, 0, cv.width, cv.height);
-      // 灰階＋簡單二值化，提高文字辨識率
+      // 灰階(偏重藍通道→淡化藍筆圈註，黑色印刷字保留)＋二值化，提高印刷碼辨識率
       const im = x.getImageData(0, 0, cv.width, cv.height), d = im.data;
-      for (let i = 0; i < d.length; i += 4) { const g = 0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2]; const v = g > 145 ? 255 : (g < 95 ? 0 : g); d[i] = d[i + 1] = d[i + 2] = v; }
+      for (let i = 0; i < d.length; i += 4) { const g = 0.10 * d[i] + 0.20 * d[i + 1] + 0.70 * d[i + 2]; const v = g > 140 ? 255 : (g < 110 ? 0 : g); d[i] = d[i + 1] = d[i + 2] = v; }
       x.putImageData(im, 0, 0); resolve(cv);
     };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('影像載入失敗')); };
@@ -122,12 +122,12 @@ async function processPhoto(file) {
   if (!window.Tesseract) { dialog('OCR 函式庫尚未載入（需連網），請稍後再試。', [{ label: '知道了' }]); return; }
   showBusy('讀取影像…');
   try {
-    const cv = await fileToCanvas(file, 2000);
+    const cv = await fileToCanvas(file, 2600);
     showBusy('辨識中…（整張數十筆需數秒）');
     await ensureOcr();
     const { data } = await ocrWorker.recognize(cv);
     const codes = extractCodes(data.text || '');
-    if (!codes.length) { hideBusy(); dialog('沒有辨識到 TW＋13 碼。\n請拍清楚、對正、光線充足，或靠近一點再拍。', [{ label: '知道了' }]); return; }
+    if (!codes.length) { hideBusy(); dialog('沒有辨識到 TW＋13 碼。\n小技巧：靠近只拍「物流編號」那一欄、對正、光線足、紙壓平；藍筆盡量別圈在編號上。', [{ label: '知道了' }]); return; }
     let added = 0, dup = 0;
     for (const code of codes) { if (await addCode(code, 'B')) added++; else dup++; }
     hideBusy(); render(); beep(true);

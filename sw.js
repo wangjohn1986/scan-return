@@ -1,5 +1,5 @@
 // service worker：快取靜態檔，讓「加到主畫面」後可離線開啟
-const CACHE = 'returnhelper-v19';
+const CACHE = 'returnhelper-v20';
 const ASSETS = ['./', './index.html', './app.js', './style.css', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
