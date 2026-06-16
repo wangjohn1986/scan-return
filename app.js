@@ -1,7 +1,7 @@
-/* 退貨系統 PWA — 手機收集物流編號，帶到電腦匯入 ERP
+/* 退貨助手 PWA — 手機掃描物流編號，回報未取貨明細到 LINE 群組
    - 模式 A：即時掃二維碼（BarcodeDetector，後備 jsQR）
    - 模式 B：拍照／選照片「批次 OCR」——一張整張清單一次抓出所有 TW＋13 碼
-   - 掃到/辨識→存 IndexedDB（防重掃）；可複製清單 / 匯出 CSV / 清除
+   - 掃到/辨識→存 IndexedDB（防重掃）→「上傳至 LINE」經中繼讓機器人推到群組
 */
 const $ = (id) => document.getElementById(id);
 const RE_TW = /^TW[A-Za-z0-9]{13}$/;
@@ -9,6 +9,8 @@ const LS_RELAY = 'sr_relay', LS_KEY = 'sr_key';
 // 內建預設（免每台手機手動設定；可在 ⚙ 覆寫）
 const DEFAULT_RELAY = 'https://script.google.com/macros/s/AKfycbx7iFTntfKD26-dLDndTPqZMPNsBY5QISXcopbLk2knpHLxOb2Jcr4IhQFr3in3pUKiUA/exec';
 const DEFAULT_KEY = '1234';
+// 音效設定 localStorage 鍵
+const LS_SND_ON = 'sr_snd_on', LS_SND_VOL = 'sr_snd_vol', LS_SND_TYPE = 'sr_snd_type';
 
 let mode = 'A';
 let stream = null, scanning = false, lastHitAt = 0, bd = null;
@@ -60,15 +62,16 @@ async function addCodeLive(raw) {
 }
 
 /* ---------- 模式 A：即時鏡頭 ---------- */
-async function startCamera() {
+async function startCamera(auto) {
   try {
-    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
-    if (actx.state === 'suspended') actx.resume();
+    try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch (e) {}
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
     video.srcObject = stream; await video.play();
     $('start-cam').hidden = true;
     scanning = true; loop();
   } catch (e) {
+    // 自動嘗試失敗（iOS 需手勢）→ 安靜顯示按鈕，不跳錯誤
+    if (auto) { $('start-cam').hidden = false; return; }
     dialog('無法開啟鏡頭：' + (e && e.message ? e.message : e) + '\n請確認已允許相機權限，且使用 HTTPS 開啟。', [{ label: '知道了' }]);
   }
 }
@@ -163,76 +166,135 @@ async function render() {
     row.innerHTML = `<span class="idx">#${i + 1}</span><span class="code">${r.code}</span><span class="time">${timeShort(r.ts)}</span><span class="mode-tag">${ml}</span><button class="del" data-code="${r.code}" aria-label="刪除">✕</button>`;
     list.appendChild(row);
   });
-  list.querySelectorAll('.del').forEach(b => b.onclick = async () => { await dbDel(b.dataset.code); seen.delete(b.dataset.code); render(); });
+  list.querySelectorAll('.del').forEach(b => b.onclick = () => {
+    const code = b.dataset.code;
+    dialog(`確定刪除這筆？\n${code}`, [
+      { label: '刪除', danger: true, onClick: async () => { await dbDel(code); seen.delete(code); render(); } },
+      { label: '取消' }
+    ]);
+  });
   list.scrollTop = list.scrollHeight;
   $('copy-list').disabled = all.length === 0;
-  $('export-csv').disabled = all.length === 0;
   $('clear-all').disabled = all.length === 0;
 }
 function timeShort(ts) { return (ts || '').split(' ')[1] || ts; }
 
-/* ---------- 複製 / 匯出 / 清除 ---------- */
+/* ---------- LINE 回報 / 清除 ---------- */
 /* 組出 LINE 回報文字 */
 function composeReport(all) {
   const a = all.filter(r => r.mode === 'A').map(r => r.code);
   const b = all.filter(r => r.mode === 'B').map(r => r.code);
-  let t = `未取貨明細 ${nowStr()}\n\n-----\n\n`;
-  t += `QR掃碼 (一般) 合計${a.length}筆\n` + (a.length ? a.join('\n') : '（無）') + '\n\n';
-  t += `文字掃碼 (無包裝) 合計${b.length}筆\n` + (b.length ? b.join('\n') : '（無）');
+  let t = `蝦皮助手：未取貨明細通知\n\n`;
+  t += `查詢時間：${nowStr()}\n`;
+  t += `處理總數：${all.length} 筆\n\n`;
+  t += `QR掃碼（一般）合計 ${a.length} 筆\n` + (a.length ? a.join('\n') : '（無）') + `\n\n`;
+  t += `文字掃碼（無包裝）合計 ${b.length} 筆\n` + (b.length ? b.join('\n') : '（無）');
   return t;
 }
-/* 上傳至 LINE：一律透過中繼讓「機器人」推到群組（不會用個人帳號分享） */
+/* 上傳至 LINE：先確認，再透過中繼讓「機器人」推到群組 */
 async function uploadToLine() {
   const all = (await dbAll()).sort((x, y) => (x.ts < y.ts ? -1 : 1));
   if (!all.length) { dialog('沒有資料可上傳。', [{ label: '知道了' }]); return; }
+  dialog(`確定上傳 ${all.length} 筆到 LINE 群組？`, [
+    { label: '上傳', onClick: () => sendToLine(all) },
+    { label: '取消' }
+  ]);
+}
+async function sendToLine(all) {
   const text = composeReport(all);
   const relay = (localStorage.getItem(LS_RELAY) || DEFAULT_RELAY).trim();
   const key = localStorage.getItem(LS_KEY) || DEFAULT_KEY;
   if (!relay) { dialog('尚未設定 LINE 中繼網址（右上 ⚙）。', [{ label: '知道了' }]); return; }
+  let ok = false;
   try {
     const r = await fetch(relay, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ key, text }) });
     const t = await r.text().catch(() => '');
-    if (/line 200/.test(t)) { toast('已送出 LINE 回報'); beep(true); return; }
-    if (/bad key/.test(t)) { dialog('通關碼不符，請到 ⚙ 確認。', [{ label: '知道了' }]); return; }
-    if (/line \d/.test(t)) { dialog('LINE 拒絕推送（' + t + '）。\n多半是 token 失效或群組設定問題。', [{ label: '知道了' }]); return; }
-    toast('已送出（請到群組確認是否收到）'); beep(true);
+    if (/line 200/.test(t)) ok = true;
+    else if (/bad key/.test(t)) { dialog('通關碼不符，請到 ⚙ 確認。', [{ label: '知道了' }]); return; }
+    else if (/line \d/.test(t)) { dialog('LINE 拒絕推送（' + t + '）。\n多半是 token 失效或群組設定問題。', [{ label: '知道了' }]); return; }
+    else ok = true; // 讀不到內容，多半已送出
   } catch (e) {
-    dialog('送出失敗：' + (e && e.message ? e.message : e) + '\n請確認網路，或到 ⚙ 檢查中繼網址。', [{ label: '知道了' }]);
+    dialog('送出失敗：' + (e && e.message ? e.message : e) + '\n請確認網路，或到 ⚙ 檢查中繼網址。', [{ label: '知道了' }]); return;
   }
+  if (ok) { toast('已送出 LINE 回報'); beep(true); askClearAfterUpload(); }
 }
-async function exportCSV() {
-  const all = (await dbAll()).sort((a, b) => (a.ts < b.ts ? -1 : 1));
-  if (!all.length) { dialog('沒有資料可匯出。', [{ label: '知道了' }]); return; }
-  const rows = [['序號', '物流編號', '模式', '時間']]; all.forEach((r, i) => rows.push([i + 1, r.code, '模式' + r.mode, r.ts]));
-  const csv = '﻿' + rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' }); const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = `退貨清單_${nowStr().replace(/[: ]/g, '-')}.csv`;
-  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-  toast(`已匯出 ${all.length} 筆 CSV`);
+function askClearAfterUpload() {
+  dialog('已送出。是否清空目前清單，準備掃下一批？', [
+    { label: '清空', danger: true, onClick: async () => { await dbClear(); seen.clear(); render(); } },
+    { label: '取消' }
+  ]);
 }
 async function clearAll() {
   const all = await dbAll(); if (!all.length) return;
-  dialog(`確定清除全部 ${all.length} 筆？（無法復原）`, [{ label: '取消' }, { label: '清除全部', danger: true, onClick: async () => { await dbClear(); seen.clear(); render(); } }]);
+  dialog(`確定清除全部 ${all.length} 筆？（無法復原）`, [{ label: '清除', danger: true, onClick: async () => { await dbClear(); seen.clear(); render(); } }, { label: '取消' }]);
 }
 
 /* ---------- 小工具 ---------- */
 let toastT = null;
 function toast(msg, warn) { const t = $('toast'); t.textContent = msg; t.classList.toggle('warn', !!warn); t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 1600); }
+function sndCfg() {
+  return {
+    on: localStorage.getItem(LS_SND_ON) !== '0',                       // 預設開
+    vol: (parseInt(localStorage.getItem(LS_SND_VOL) || '60', 10)) / 100, // 預設 0.6
+    type: localStorage.getItem(LS_SND_TYPE) || 'beep'
+  };
+}
+function ensureActx() { try { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch (e) {} }
+function tone(freq, dur, wave, vol, delay) {
+  if (!actx) return;
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = wave || 'square'; o.frequency.value = freq; o.connect(g); g.connect(actx.destination);
+  const t0 = actx.currentTime + (delay || 0);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0001, vol), t0 + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.start(t0); o.stop(t0 + dur + 0.03);
+}
+// 成功音（依選擇的種類）
+function playSuccess(type, v) {
+  ensureActx(); if (!actx) return;
+  switch (type) {
+    case 'ding': tone(1320, 0.3, 'sine', v, 0); break;
+    case 'double': tone(1000, 0.12, 'square', v, 0); tone(1000, 0.12, 'square', v, 0.16); break;
+    case 'low': tone(620, 0.22, 'square', v, 0); break;
+    case 'chime': tone(880, 0.14, 'triangle', v, 0); tone(1320, 0.22, 'triangle', v, 0.14); break;
+    default: tone(1000, 0.18, 'square', v, 0); // beep
+  }
+}
 function beep(ok) {
-  try {
-    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
-    if (actx.state === 'suspended') actx.resume();
-    const o = actx.createOscillator(), g = actx.createGain(); o.type = 'square'; o.frequency.value = ok ? 1000 : 300;
-    g.gain.value = 0.0001; o.connect(g); g.connect(actx.destination); const t0 = actx.currentTime;
-    g.gain.exponentialRampToValueAtTime(0.6, t0 + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t0 + (ok ? 0.18 : 0.32));
-    o.start(t0); o.stop(t0 + (ok ? 0.2 : 0.34));
-  } catch (e) {}
+  const s = sndCfg();
+  if (s.on) {
+    ensureActx();
+    if (actx) {
+      if (ok) playSuccess(s.type, s.vol);
+      else { tone(320, 0.16, 'square', s.vol, 0); tone(250, 0.18, 'square', s.vol, 0.17); } // 錯誤：低音雙嗶
+    }
+  }
   try { navigator.vibrate && navigator.vibrate(ok ? 60 : [40, 40, 40]); } catch (e) {}
 }
 function nowStr() { const d = new Date(), p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; }
-function openSettings() { $('relay-url').value = localStorage.getItem(LS_RELAY) || DEFAULT_RELAY; $('relay-key').value = localStorage.getItem(LS_KEY) || DEFAULT_KEY; $('settings').hidden = false; }
+
+/* 音效設定視窗 */
+function openSettings() {
+  const s = sndCfg();
+  $('snd-type').value = s.type;
+  $('snd-on').checked = s.on;
+  $('snd-vol').value = Math.round(s.vol * 100);
+  $('snd-vol-v').textContent = Math.round(s.vol * 100);
+  $('settings').hidden = false;
+}
 function closeSettings() { $('settings').hidden = true; }
-function saveSettings() { localStorage.setItem(LS_RELAY, $('relay-url').value.trim()); localStorage.setItem(LS_KEY, $('relay-key').value.trim()); closeSettings(); toast('設定已儲存'); }
+function saveSettings() {
+  localStorage.setItem(LS_SND_TYPE, $('snd-type').value);
+  localStorage.setItem(LS_SND_ON, $('snd-on').checked ? '1' : '0');
+  localStorage.setItem(LS_SND_VOL, String(parseInt($('snd-vol').value, 10)));
+  closeSettings(); toast('音效設定已儲存');
+}
+function testSound() {
+  if (!$('snd-on').checked) { toast('音效目前為關閉'); return; }
+  ensureActx();
+  playSuccess($('snd-type').value, parseInt($('snd-vol').value, 10) / 100);
+}
 function dialog(text, buttons) {
   const box = $('dialog'); $('dialog-text').textContent = text; const foot = $('dialog-foot'); foot.innerHTML = '';
   buttons.forEach(b => { const el = document.createElement('button'); el.className = 'btn ' + (b.danger ? 'up' : b.onClick ? 'save' : 'cancel'); if (b.danger) el.style.background = 'var(--red)'; el.textContent = b.label; el.onclick = () => { box.hidden = true; if (b.onClick) b.onClick(); }; foot.appendChild(el); });
@@ -246,18 +308,22 @@ async function init() {
   if ('BarcodeDetector' in window) { try { bd = new BarcodeDetector({ formats: ['qr_code'] }); } catch (e) { bd = null; } }
   setMode('A'); render();
 
-  $('start-cam').onclick = startCamera;
+  $('start-cam').onclick = () => startCamera(false);
   $('fab').onclick = () => setMode(mode === 'A' ? 'B' : 'A');
   $('batch-btn').onclick = () => $('photo-input').click();
   $('photo-input').onchange = (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; processPhoto(f); };
   $('copy-list').onclick = uploadToLine;
-  $('export-csv').onclick = exportCSV;
   $('clear-all').onclick = clearAll;
   $('settings-btn').onclick = openSettings;
   $('settings-close').onclick = closeSettings;
   $('settings-cancel').onclick = closeSettings;
   $('settings-save').onclick = saveSettings;
+  $('snd-test').onclick = testSound;
+  $('snd-vol').oninput = function () { $('snd-vol-v').textContent = this.value; };
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+
+  // 一進來自動嘗試開鏡頭（電腦/Android 會直接開；iPhone 需手勢時會安靜顯示按鈕）
+  startCamera(true);
 }
 init();

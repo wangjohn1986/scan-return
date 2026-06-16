@@ -1,6 +1,6 @@
 {
-  "name": "退貨系統",
-  "short_name": "退貨系統",
+  "name": "退貨助手",
+  "short_name": "退貨助手",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

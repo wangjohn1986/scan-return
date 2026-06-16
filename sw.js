@@ -1,5 +1,5 @@
 // service worker：快取靜態檔，讓「加到主畫面」後可離線開啟
-const CACHE = 'scan-return-v12';
+const CACHE = 'scan-return-v18';
 const ASSETS = ['./', './index.html', './app.js', './style.css', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
