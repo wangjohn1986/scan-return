@@ -5,6 +5,7 @@
 */
 const $ = (id) => document.getElementById(id);
 const RE_TW = /^TW[A-Za-z0-9]{13}$/;
+const LS_RELAY = 'sr_relay', LS_KEY = 'sr_key';
 
 let mode = 'A';
 let stream = null, scanning = false, lastHitAt = 0, bd = null;
@@ -178,6 +179,15 @@ async function uploadToLine() {
   const all = (await dbAll()).sort((x, y) => (x.ts < y.ts ? -1 : 1));
   if (!all.length) { dialog('沒有資料可上傳。', [{ label: '知道了' }]); return; }
   const text = composeReport(all);
+  // 優先：透過中繼讓機器人自動推送
+  const relay = localStorage.getItem(LS_RELAY) || '';
+  if (relay) {
+    try {
+      await fetch(relay, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ key: localStorage.getItem(LS_KEY) || '', text }) });
+      toast('已送出 LINE 回報'); beep(true); return;
+    } catch (e) { dialog('送出中繼失敗：' + (e && e.message ? e.message : e) + '\n改用系統分享。', [{ label: '知道了' }]); }
+  }
+  // 後備：系統分享 / LINE 連結
   if (navigator.share) {
     try { await navigator.share({ text }); return; }
     catch (e) { if (e && e.name === 'AbortError') return; }
@@ -218,6 +228,9 @@ function beep(ok) {
   try { navigator.vibrate && navigator.vibrate(ok ? 60 : [40, 40, 40]); } catch (e) {}
 }
 function nowStr() { const d = new Date(), p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; }
+function openSettings() { $('relay-url').value = localStorage.getItem(LS_RELAY) || ''; $('relay-key').value = localStorage.getItem(LS_KEY) || ''; $('settings').hidden = false; }
+function closeSettings() { $('settings').hidden = true; }
+function saveSettings() { localStorage.setItem(LS_RELAY, $('relay-url').value.trim()); localStorage.setItem(LS_KEY, $('relay-key').value.trim()); closeSettings(); toast('設定已儲存'); }
 function dialog(text, buttons) {
   const box = $('dialog'); $('dialog-text').textContent = text; const foot = $('dialog-foot'); foot.innerHTML = '';
   buttons.forEach(b => { const el = document.createElement('button'); el.className = 'btn ' + (b.danger ? 'up' : b.onClick ? 'save' : 'cancel'); if (b.danger) el.style.background = 'var(--red)'; el.textContent = b.label; el.onclick = () => { box.hidden = true; if (b.onClick) b.onClick(); }; foot.appendChild(el); });
@@ -238,6 +251,10 @@ async function init() {
   $('copy-list').onclick = uploadToLine;
   $('export-csv').onclick = exportCSV;
   $('clear-all').onclick = clearAll;
+  $('settings-btn').onclick = openSettings;
+  $('settings-close').onclick = closeSettings;
+  $('settings-cancel').onclick = closeSettings;
+  $('settings-save').onclick = saveSettings;
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 }
