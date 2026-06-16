@@ -34,6 +34,13 @@
 
     <button class="start-cam" id="start-cam" type="button">📷 點擊開啟鏡頭</button>
 
+    <!-- 模式 B：拍照／選照片 批次辨識 -->
+    <button class="batch-btn" id="batch-btn" type="button" hidden>📷 拍照／選照片　批次辨識</button>
+    <input id="photo-input" type="file" accept="image/*" hidden>
+
+    <!-- 辨識中遮罩 -->
+    <div class="busy" id="busy" hidden><div class="busy-box"><div class="busy-spin"></div><div class="busy-sub" id="busy-sub">辨識中…</div></div></div>
+
     <button class="fab" id="fab" type="button" aria-label="切換掃描模式">
       <span class="fab-mode" id="fab-mode">A</span>
       <span class="fab-label" id="fab-label">條碼</span>
@@ -49,8 +56,8 @@
       <span class="counts">共 <b id="cnt">0</b> 筆</span>
     </div>
     <div class="list-tools">
-      <button id="copy-list" class="tool-btn primary" type="button">複製清單</button>
-      <button id="export-csv" class="tool-btn" type="button">匯出 CSV</button>
+      <button id="copy-list" class="tool-btn primary" type="button">上傳至 LINE</button>
+      <button id="export-csv" class="tool-btn" type="button">儲存</button>
       <button id="clear-all" class="tool-btn danger" type="button">清除全部</button>
     </div>
     <div class="list" id="list"></div>
