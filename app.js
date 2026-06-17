@@ -5,7 +5,7 @@
 */
 const $ = (id) => document.getElementById(id);
 const RE_TW = /^TW[A-Za-z0-9]{13}$/;                    // 模式B（拍照OCR）：TW+13，共15字
-const RE_QR = /^(\d{2})(\d{2})(\d{2})[A-Za-z0-9]{8}$/;  // 模式A（即時掃QR）：YYMMDD+8英數，共14字
+const RE_QR = /^[\d\s-]+$/;                             // 模式A（即時掃QR）：內容須純數字(可含連字號/空白)，取後8碼當交易序號
 const LS_RELAY = 'sr_relay', LS_KEY = 'sr_key';
 // 內建預設（免每台手機手動設定；可在 ⚙ 覆寫）
 const DEFAULT_RELAY = 'https://script.google.com/macros/s/AKfycbx7iFTntfKD26-dLDndTPqZMPNsBY5QISXcopbLk2knpHLxOb2Jcr4IhQFr3in3pUKiUA/exec';
@@ -46,24 +46,20 @@ async function addCode(raw, m) {
   if (seen.has(code)) return false;
   try { await dbAdd({ code, mode: m, ts: nowStr() }); seen.add(code); return true; } catch (e) { return false; }
 }
-// 從 QR 內容取出「YYMMDD+8英數」14碼（前6碼須為合理日期；模式A 即時掃用）
+// 從 QR 內容取「後8碼純數字」當交易序號（例 "0350000-11318691" 或 "035000011318691" → "11318691"）
 function extractOneQR(raw) {
-  // 只接受獨立的 14 碼（前後不可黏其他英數）
-  const tokens = (raw || '').toUpperCase().split(/[^A-Z0-9]+/);
-  for (const t of tokens) {
-    const m = RE_QR.exec(t);
-    if (!m) continue;
-    const mm = +m[2], dd = +m[3];           // m[1]=YY, m[2]=MM, m[3]=DD
-    if (mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) return t;
-  }
-  return null;
+  const s = (raw || '').trim();
+  if (!s || !RE_QR.test(s)) return null;    // 排除網址/含字母等非預期內容
+  const digits = s.replace(/\D/g, '');      // 去掉連字號/空白，只留數字
+  if (digits.length < 8) return null;
+  return digits.slice(-8);                   // 取後8碼（= USale 交易序號 TxnNum）
 }
 // 模式 A 即時掃：單筆，含節流與音效
 async function addCodeLive(raw) {
   if (Date.now() - lastHitAt < 1200) return;
   lastHitAt = Date.now();
   const code = extractOneQR(raw);
-  if (!code) { flashFrame('err'); beep(false); toast('QR 格式不符（需 YYMMDD＋8碼，共14字）', true); return; }
+  if (!code) { flashFrame('err'); beep(false); toast('QR 格式不符（需數字QR，取後8碼）', true); return; }
   if (seen.has(code)) { flashFrame('err'); beep(false); toast('重複，已略過：' + code, true); return; }
   if (await addCode(code, 'A')) { flashFrame('ok'); beep(true); toast('✅ ' + code); render(); }
 }
