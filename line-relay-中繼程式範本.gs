@@ -54,6 +54,25 @@ function doPost(e) {
       return out('usale-upload ok ' + batch.numbers.length);
     }
 
+    // (1.6) 蝦皮助手後台：LINE 範本「統一管理」雲端儲存（後台改 → 寫這裡 → 各機器/PWA 來讀）
+    if (body.action === 'setTemplate') {
+      if (body.key !== KEY) return out('bad key');
+      PropertiesService.getScriptProperties().setProperty('LINE_TEMPLATES', JSON.stringify(body.templates || []));
+      return out('setTemplate ok ' + (body.templates || []).length);
+    }
+
+    // (1.7) 後台「忘記密碼／寄測試信」→ 由 Google 端 MailApp 寄出
+    if (body.action === 'forgotPassword') {
+      if (body.key !== KEY) return out('bad key');
+      MailApp.sendEmail(String(body.email || ''), '【蝦皮助手】管理後台密碼', '您的管理後台密碼為：' + String(body.password || '') + '\n\n（此信由蝦皮助手後台「忘記密碼」自動寄出，請勿外流。）');
+      return out('forgotPassword mail sent');
+    }
+    if (body.action === 'testMail') {
+      if (body.key !== KEY) return out('bad key');
+      MailApp.sendEmail(String(body.email || ''), '【蝦皮助手】寄信測試', '這是一封測試信，代表後台的寄信中繼設定正常 ✅');
+      return out('testMail sent');
+    }
+
     // (2) PWA / 電腦端來的 LINE 推送請求（電腦退貨成功後的回報也走這條）
     if (body.key !== KEY) return out('bad key');
     var text = String(body.text || '').slice(0, 4900);
@@ -86,6 +105,12 @@ function doGet(e) {
     if (e.parameter.key !== KEY) return outJson({ error: 'bad key' });
     var b = p.getProperty('USALE_BATCH');
     return outJson(b ? JSON.parse(b) : { batchId: 0, numbers: [] });
+  }
+  // 後台/PWA 讀 LINE 範本（?action=getTemplate&key=KEY）
+  if (e && e.parameter && e.parameter.action === 'getTemplate') {
+    if (e.parameter.key !== KEY) return outJson({ error: 'bad key' });
+    var tpl = p.getProperty('LINE_TEMPLATES');
+    return outJson({ templates: tpl ? JSON.parse(tpl) : [] });
   }
   return out('relay alive\nlastGroupId=' + (p.getProperty('LAST_GROUP_ID') || '(尚未抓到)') + '\nlastUserId=' + (p.getProperty('LAST_USER_ID') || '(尚未抓到)'));
 }
