@@ -46,7 +46,15 @@ function doPost(e) {
       return out('webhook ok');
     }
 
-    // (2) PWA 來的推送請求
+    // (1.5) 手機「執行未取入庫」→ 把整批號碼存起來給擴充來拿（不推 LINE）
+    if (body.action === 'usale-upload') {
+      if (body.key !== KEY) return out('bad key');
+      var batch = { batchId: Date.now(), numbers: (body.numbers || []), uploadedAt: new Date().toISOString() };
+      PropertiesService.getScriptProperties().setProperty('USALE_BATCH', JSON.stringify(batch));
+      return out('usale-upload ok ' + batch.numbers.length);
+    }
+
+    // (2) PWA / 電腦端來的 LINE 推送請求（電腦退貨成功後的回報也走這條）
     if (body.key !== KEY) return out('bad key');
     var text = String(body.text || '').slice(0, 4900);
     if (!text) return out('empty');
@@ -71,8 +79,15 @@ function doPost(e) {
 }
 
 // 用瀏覽器開 /exec 可看到目前抓到的 groupId / userId
-function doGet() {
+function doGet(e) {
   var p = PropertiesService.getScriptProperties();
+  // 擴充輪詢：拿最新的 USale 批次（?action=usale-latest&key=KEY）
+  if (e && e.parameter && e.parameter.action === 'usale-latest') {
+    if (e.parameter.key !== KEY) return outJson({ error: 'bad key' });
+    var b = p.getProperty('USALE_BATCH');
+    return outJson(b ? JSON.parse(b) : { batchId: 0, numbers: [] });
+  }
   return out('relay alive\nlastGroupId=' + (p.getProperty('LAST_GROUP_ID') || '(尚未抓到)') + '\nlastUserId=' + (p.getProperty('LAST_USER_ID') || '(尚未抓到)'));
 }
 function out(s) { return ContentService.createTextOutput(s).setMimeType(ContentService.MimeType.TEXT); }
+function outJson(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }

@@ -221,7 +221,7 @@ async function render() {
   const all = (await dbAll()).sort((a, b) => (a.ts < b.ts ? -1 : 1));
   $('cnt').textContent = all.length;
   const _qa = all.filter(r => r.mode === 'A').length, _qb = all.length - _qa;
-  $('hdr-count').textContent = `QR掃碼 ${_qa}　文字掃碼 ${_qb}　合計 ${all.length}`;
+  $('hdr-count').textContent = `QR掃碼 ${_qa}　文字掃描 ${_qb}　合計 ${all.length}`;
   $('empty').hidden = all.length > 0;
   const list = $('list'); list.innerHTML = '';
   all.forEach((r, i) => {
@@ -255,32 +255,28 @@ function composeReport(all) {
   t += `文字掃碼（無包裝）合計 ${b.length} 筆\n` + (b.length ? b.join('\n') : '（無）');
   return t;
 }
-/* 上傳至 LINE：先確認，再透過中繼讓「機器人」推到群組 */
+/* 執行未取入庫：先確認，再把整批號碼上傳到中繼站，電腦端擴充會自動帶出處理 */
 async function uploadToLine() {
   const all = (await dbAll()).sort((x, y) => (x.ts < y.ts ? -1 : 1));
   if (!all.length) { dialog('沒有資料可上傳。', [{ label: '知道了' }]); return; }
-  dialog(`確定上傳 ${all.length} 筆到 LINE 群組？`, [
-    { label: '上傳', onClick: () => sendToLine(all) },
+  dialog(`確定上傳 ${all.length} 筆給電腦「執行未取入庫」？`, [
+    { label: '上傳', onClick: () => sendToUsale(all) },
     { label: '取消' }
   ]);
 }
-async function sendToLine(all) {
-  const text = composeReport(all);
+async function sendToUsale(all) {
+  const numbers = all.map(r => r.code);
   const relay = (localStorage.getItem(LS_RELAY) || DEFAULT_RELAY).trim();
   const key = localStorage.getItem(LS_KEY) || DEFAULT_KEY;
-  if (!relay) { dialog('尚未設定 LINE 中繼網址（右上 ⚙）。', [{ label: '知道了' }]); return; }
-  let ok = false;
+  if (!relay) { dialog('尚未設定中繼網址（右上 ⚙）。', [{ label: '知道了' }]); return; }
   try {
-    const r = await fetch(relay, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ key, text }) });
+    const r = await fetch(relay, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ key, action: 'usale-upload', numbers }) });
     const t = await r.text().catch(() => '');
-    if (/line 200/.test(t)) ok = true;
-    else if (/bad key/.test(t)) { dialog('通關碼不符，請到 ⚙ 確認。', [{ label: '知道了' }]); return; }
-    else if (/line \d/.test(t)) { dialog('LINE 拒絕推送（' + t + '）。\n多半是 token 失效或群組設定問題。', [{ label: '知道了' }]); return; }
-    else ok = true; // 讀不到內容，多半已送出
+    if (/bad key/.test(t)) { dialog('通關碼不符，請到 ⚙ 確認。', [{ label: '知道了' }]); return; }
+    toast('✅ 已上傳，電腦端會自動帶出'); beep(true); askClearAfterUpload();
   } catch (e) {
     dialog('送出失敗：' + (e && e.message ? e.message : e) + '\n請確認網路，或到 ⚙ 檢查中繼網址。', [{ label: '知道了' }]); return;
   }
-  if (ok) { toast('已送出 LINE 回報'); beep(true); askClearAfterUpload(); }
 }
 function askClearAfterUpload() {
   dialog('已送出。是否清空目前清單，準備掃下一批？', [

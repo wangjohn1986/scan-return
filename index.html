@@ -15,7 +15,7 @@
 <body>
   <header class="top">
     <span class="top-title">未取貨助手</span>
-    <span class="hdr-prog" id="hdr-count">QR掃碼 0　文字掃碼 0　合計 0</span>
+    <span class="hdr-prog" id="hdr-count">QR掃碼 0　文字掃描 0　合計 0</span>
   </header>
 
   <!-- 鏡頭舞台 -->
@@ -31,10 +31,10 @@
       <div class="ocr-hint" id="ocr-hint" hidden>辨識中…</div>
     </div>
 
-    <button class="start-cam" id="start-cam" type="button">📷 點擊開啟鏡頭</button>
+    <button class="start-cam" id="start-cam" type="button">點擊開啟鏡頭</button>
 
     <!-- 模式 B：拍照／選照片 批次辨識 -->
-    <button class="batch-btn" id="batch-btn" type="button" hidden>📷 拍照辨識</button>
+    <button class="batch-btn" id="batch-btn" type="button" hidden>拍照辨識</button>
     <input id="photo-input" type="file" accept="image/*" capture="environment" hidden>
 
     <!-- 辨識中遮罩 -->
@@ -55,7 +55,7 @@
       <span class="counts">共 <b id="cnt">0</b> 筆</span>
     </div>
     <div class="list-tools">
-      <button id="copy-list" class="tool-btn primary" type="button">上傳至 LINE</button>
+      <button id="copy-list" class="tool-btn primary" type="button">執行未取入庫</button>
       <button id="clear-all" class="tool-btn danger" type="button">清除全部</button>
     </div>
     <div class="list" id="list"></div>
@@ -71,9 +71,9 @@
       <div class="crop-hint">在下圖拖曳框出要辨識的範圍 → 按「辨識選取區」；或直接「整張辨識」。</div>
       <div class="crop-wrap"><canvas id="crop-cv"></canvas></div>
       <div class="modal-foot">
-        <button id="crop-cancel" class="btn cancel" type="button">取消</button>
-        <button id="crop-whole" class="btn" style="background:#475569" type="button">整張辨識</button>
         <button id="crop-ok" class="btn save" type="button">辨識選取區</button>
+        <button id="crop-whole" class="btn" style="background:#475569" type="button">整張辨識</button>
+        <button id="crop-cancel" class="btn cancel" type="button">取消</button>
       </div>
     </div>
   </div>

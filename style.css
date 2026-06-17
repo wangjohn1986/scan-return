@@ -34,7 +34,6 @@ body {
 }
 .top-title { font-weight: 800; font-size: 17px; }
 .hdr-prog { margin-left: auto; background: rgba(255,255,255,.2); padding: 3px 12px; border-radius: 999px; font-size: 15px; font-weight: 800; }
-.gear { background: none; border: none; color: #fff; font-size: 22px; cursor: pointer; padding: 0 2px; }
 
 /* 鏡頭舞台 */
 .stage {
@@ -46,12 +45,6 @@ body {
 }
 #video { width: 100%; height: 100%; object-fit: cover; display: block; }
 
-/* 計數器 */
-.counter {
-  position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 6;
-  background: rgba(0,0,0,.6); color: #fff; font-weight: 800; font-size: 14px;
-  padding: 5px 14px; border-radius: 999px;
-}
 
 /* 黃框遮罩層 */
 .overlay {
@@ -185,7 +178,6 @@ body {
 .lab { font-weight: 700; font-size: 13px; display: block; margin-bottom: 6px; }
 .hint { font-size: 12px; color: #64748b; line-height: 1.5; }
 .sel { width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 15px; background: #fff; }
-#snd-vol { width: 100%; }
 .lab.chk { display: flex; align-items: center; gap: 8px; font-weight: 700; }
 .lab.chk input { width: 20px; height: 20px; }
 .dialog-text { font-size: 15px; color: var(--ink); line-height: 1.6; padding: 8px 4px 4px; text-align: center; }
