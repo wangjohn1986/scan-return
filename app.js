@@ -205,7 +205,7 @@ function setMode(m) {
   $('fab').classList.toggle('mode-b', !a);
   $('fab-mode').textContent = a ? 'QR' : '文字';
   $('fab-label').textContent = a ? '掃碼' : '掃描';
-  $('guide').textContent = a ? '請掃描二維碼' : '拍整張清單 → 批次辨識';
+  $('guide').textContent = a ? '掃描 QR Code' : '拍攝物流單號';
   $('frame').style.display = a ? '' : 'none';
   $('frame').classList.toggle('mode-a', a);
   $('batch-btn').hidden = a;
