@@ -273,16 +273,20 @@ async function sendToUsale(all) {
     const r = await fetch(relay, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ key, action: 'usale-upload', numbers }) });
     const t = await r.text().catch(() => '');
     if (/bad key/.test(t)) { dialog('通關碼不符，請到 ⚙ 確認。', [{ label: '知道了' }]); return; }
-    toast('✅ 已上傳，電腦端會自動帶出'); beep(true); askClearAfterUpload();
+    toast('✅ 已上傳，電腦端會自動帶出'); beep(true); askClearAfterUpload(numbers.length);
   } catch (e) {
     dialog('送出失敗：' + (e && e.message ? e.message : e) + '\n請確認網路，或到 ⚙ 檢查中繼網址。', [{ label: '知道了' }]); return;
   }
 }
-function askClearAfterUpload() {
-  dialog('已送出。是否清空目前清單，準備掃下一批？', [
-    { label: '清空', danger: true, onClick: async () => { await dbClear(); seen.clear(); render(); } },
-    { label: '取消' }
-  ]);
+function askClearAfterUpload(n) {
+  dialog(
+    `系統已同步 ${n} 筆資料至 ERP。\n\n⚠️ 作業規範：請先至 ERP 核對接收數量是否為 ${n} 筆（核對為作業人員之責任）。確認無誤後再執行清空；若數量不符，請保留畫面並聯繫技術支援。`,
+    [
+      { label: '確認無誤，清空畫面', onClick: async () => { await dbClear(); seen.clear(); render(); } },
+      { label: '數量有誤，保留畫面' }
+    ],
+    `請核對同步數量（共 ${n} 筆）`
+  );
 }
 async function clearAll() {
   const all = await dbAll(); if (!all.length) return;
@@ -319,8 +323,10 @@ function beep(ok) {
   try { navigator.vibrate && navigator.vibrate(ok ? 60 : [40, 40, 40]); } catch (e) {}
 }
 function nowStr() { const d = new Date(), p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; }
-function dialog(text, buttons) {
-  const box = $('dialog'); $('dialog-text').textContent = text; const foot = $('dialog-foot'); foot.innerHTML = '';
+function dialog(text, buttons, title) {
+  const box = $('dialog'); const tEl = $('dialog-title');
+  if (title) { tEl.textContent = title; tEl.hidden = false; } else { tEl.hidden = true; }
+  $('dialog-text').textContent = text; const foot = $('dialog-foot'); foot.innerHTML = '';
   buttons.forEach(b => { const el = document.createElement('button'); el.className = 'btn ' + (b.danger ? 'up' : b.onClick ? 'save' : 'cancel'); if (b.danger) el.style.background = 'var(--red)'; el.textContent = b.label; el.onclick = () => { box.hidden = true; if (b.onClick) b.onClick(); }; foot.appendChild(el); });
   box.hidden = false;
 }
