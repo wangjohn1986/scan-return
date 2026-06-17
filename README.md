@@ -1,4 +1,4 @@
-# 退貨助手（iPhone PWA 網頁 App）
+# 未取貨助手（iPhone PWA 網頁 App）
 
 手機鏡頭掃描物流編號 → 本地存檔（IndexedDB）→ 帶到電腦匯入 ERP。
 iPhone 用 Safari 開網址後「**加入主畫面**」，就變成一個 icon、點下去全螢幕像 App。純收集，不做核對。

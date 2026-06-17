@@ -1,6 +1,6 @@
 {
-  "name": "退貨助手",
-  "short_name": "退貨助手",
+  "name": "未取貨助手",
+  "short_name": "未取貨助手",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
