@@ -101,8 +101,15 @@ function imgToCanvas(img, sx, sy, sw, sh, maxDim, mode) {
   const cv = document.createElement('canvas'); cv.width = Math.round(sw * scale); cv.height = Math.round(sh * scale);
   const x = cv.getContext('2d'); x.drawImage(img, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
   const im = x.getImageData(0, 0, cv.width, cv.height), d = im.data;
-  const n = d.length / 4, gray = new Uint8Array(n), hist = new Array(256).fill(0);
+  const n = d.length / 4, gray = new Uint8Array(n); let hist = new Array(256).fill(0);
   for (let i = 0, j = 0; i < d.length; i += 4, j++) { const g = Math.round(0.10 * d[i] + 0.20 * d[i + 1] + 0.70 * d[i + 2]); gray[j] = g; hist[g]++; }
+  // 對比拉伸（2%~98% 百分位 → 0~255）：拉開淡墨與背景、抵抗光線不均，後續門檻更準
+  let acc = 0, lim = n * 0.02, lo = 0, hi = 255;
+  for (let t = 0; t < 256; t++) { acc += hist[t]; if (acc >= lim) { lo = t; break; } }
+  acc = 0; for (let t = 255; t >= 0; t--) { acc += hist[t]; if (acc >= lim) { hi = t; break; } }
+  const range = Math.max(1, hi - lo);
+  hist = new Array(256).fill(0);
+  for (let j = 0; j < n; j++) { let v = Math.round((gray[j] - lo) * 255 / range); v = v < 0 ? 0 : (v > 255 ? 255 : v); gray[j] = v; hist[v]++; }
   if (mode === 'gray') {
     for (let i = 0, j = 0; i < d.length; i += 4, j++) { d[i] = d[i + 1] = d[i + 2] = gray[j]; }
   } else {
@@ -121,7 +128,9 @@ async function ensureOcr() {
     tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
     preserve_interword_spaces: '1',
     tessedit_pageseg_mode: '6', // 6=單一文字區塊：整列清單逐行讀，最不會漏行
-    user_defined_dpi: '300'     // 固定 DPI，避免 Tesseract 亂猜縮放
+    user_defined_dpi: '300',    // 固定 DPI，避免 Tesseract 亂猜縮放
+    load_system_dawg: '0',      // 關閉英文字典：編碼不是單字，避免被「校正」成怪字
+    load_freq_dawg: '0'
   });
 }
 // 取出精確的 TW+13；另把「TW 開頭、字數接近但不對」列為疑似(多半少認/多認一碼)
@@ -185,7 +194,7 @@ async function runOcr(img, region) {
   showBusy('辨識中…（數十筆約 10-20 秒）');
   try {
     await ensureOcr();
-    const MAXDIM = 3000;
+    const MAXDIM = 3500;
     const exactSet = new Set(), susSet = new Set();
     // Otsu 二值化 + 純灰階各跑一次取聯集，補回單一門檻會漏掉的行
     for (const mode of ['otsu', 'gray']) {
@@ -403,7 +412,6 @@ async function init() {
   $('batch-btn').onclick = () => $('photo-input').click();
   $('photo-input').onchange = (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; openCrop(f); };
   $('crop-cancel').onclick = () => { $('crop').hidden = true; cropImg = null; };
-  $('crop-whole').onclick = () => cropConfirm(true);
   $('crop-ok').onclick = () => cropConfirm(false);
   $('suspect-close').onclick = closeSuspect;
   $('suspect-done').onclick = closeSuspect;
