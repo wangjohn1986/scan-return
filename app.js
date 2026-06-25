@@ -134,13 +134,18 @@ async function ensureOcr() {
   });
 }
 // 取出精確的 TW+13；另把「TW 開頭、字數接近但不對」列為疑似(多半少認/多認一碼)
+// 規則：TW 前面不能有任何文字/數字 → 逐行只看「該行第一個英數段」，排除 SPXTW、數字開頭等
 function extractAll(text) {
-  const up = (text || '').toUpperCase(); const exact = new Set(), sus = new Set();
-  up.split(/[^A-Z0-9]+/).forEach(t => {
-    if (RE_TW.test(t)) exact.add(t);
-    else if (/^TW[A-Z0-9]{10,16}$/.test(t)) sus.add(t);
+  const exact = new Set(), sus = new Set();
+  (text || '').split(/\r?\n/).forEach((line) => {
+    const m = line.toUpperCase().match(/[A-Z0-9]+/); // 該行第一段連續英數
+    if (!m) return;
+    const t = m[0];
+    if (RE_TW.test(t)) exact.add(t);                    // 剛好 TW+13
+    else if (/^TW[A-Z0-9]{10,16}$/.test(t)) sus.add(t); // TW 開頭但字數略有出入 → 疑似(可手動修)
+    // 其餘(SPXTW…、數字/別的字母開頭) → 直接排除
   });
-  return { exact: [...exact], suspects: [...sus].filter(s => !exact.has(s)) };
+  return { exact: [...exact], suspects: [...sus].filter((s) => !exact.has(s)) };
 }
 
 /* ---- A：框選欄位 —— 先讓使用者在照片上框出「物流編號」那一欄再辨識 ---- */
